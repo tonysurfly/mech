@@ -18,9 +18,9 @@ type DNSDomain struct {
 	Tags             []string    `json:"tags"`
 	Template         int         `json:"template"`
 	VanityNameserver interface{} `json:"vanityNameserver"`
-	Contacts         []int       `json:"contacts"`
-	CreatedAt        string      `json:"createdAt"`
-	UpdatedAt        string      `json:"updatedAt"`
+	Contacts         []int       `json:"contactIds"`
+	CreatedAt        string      `json:"createdTs"`
+	UpdatedAt        string      `json:"modifiedTs"`
 }
 
 // GetDNSDomains returns active DNS domains in Constellix
