@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -107,62 +108,68 @@ func getTag(obj interface{}, fieldName string, tagType string) string {
 // makeSimpleAPIRequest makes a simple API request, normally to the Sonar API as
 // it doesn't support pagination
 func makeSimpleAPIRequest(method string, url string, payload io.Reader, expectedStatusCode int) (respBody []byte, err error) {
+	var payloadBytes []byte
+	if payload != nil {
+		payloadBytes, err = io.ReadAll(payload)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	client := &http.Client{
 		Timeout: 3 * time.Minute,
 	}
-	req, err := http.NewRequest(method, url, payload)
 
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Add("x-cns-security-token", buildSecurityToken())
-	req.Header.Add("Content-Type", "application/json")
-	if logLevel > 0 {
-		logger.Printf("  requesting %s %s ...\n", method, url)
-		if payload != nil {
-			payloadBytes, err := io.ReadAll(payload)
-			if err != nil {
-				return nil, err
-			}
-			logger.Println("  payload: " + string(payloadBytes))
-		} else {
-			logger.Println("  no payload")
+	for {
+		req, err := http.NewRequest(method, url, bytes.NewReader(payloadBytes))
+		if err != nil {
+			return nil, err
 		}
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusTooManyRequests {
-		// Proper way to handle rate limit would be to parse the X-Ratelimit-Reset header
-		if resetHeaderValue, ok := resp.Header["X-Ratelimit-Reset"]; ok {
-			if sleep, err := strconv.ParseInt(resetHeaderValue[0], 10, 64); err == nil {
-				logger.Printf("Rate limit exceeded, waiting %d seconds...\n", sleep)
-				time.Sleep(time.Duration(sleep) * time.Second)
-				return makeSimpleAPIRequest(method, url, payload, expectedStatusCode)
+		req.Header.Add("x-cns-security-token", buildSecurityToken())
+		req.Header.Add("Content-Type", "application/json")
+		if logLevel > 0 {
+			logger.Printf("  requesting %s %s ...\n", method, url)
+			if payloadBytes != nil {
+				logger.Println("  payload: " + string(payloadBytes))
+			} else {
+				logger.Println("  no payload")
 			}
 		}
-		// If the header is not present, we will wait for a fixed time
-		logger.Printf("Rate limit exceeded, waiting %d seconds...\n", rateLimitWaitTime)
-		time.Sleep(time.Duration(rateLimitWaitTime) * time.Second)
-		return makeSimpleAPIRequest(method, url, payload, expectedStatusCode)
-	}
+		resp, err := client.Do(req)
+		if err != nil {
+			return nil, err
+		}
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
+		if resp.StatusCode == http.StatusTooManyRequests {
+			if resetHeaderValue, ok := resp.Header["X-Ratelimit-Reset"]; ok {
+				if sleep, err := strconv.ParseInt(resetHeaderValue[0], 10, 64); err == nil {
+					logger.Printf("Rate limit exceeded, waiting %d seconds...\n", sleep)
+					resp.Body.Close()
+					time.Sleep(time.Duration(sleep) * time.Second)
+					continue
+				}
+			}
+			logger.Printf("Rate limit exceeded, waiting %d seconds...\n", rateLimitWaitTime)
+			resp.Body.Close()
+			time.Sleep(time.Duration(rateLimitWaitTime) * time.Second)
+			continue
+		}
+
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, err
+		}
+		if resp.StatusCode != expectedStatusCode {
+			logger.Println(string(body))
+			return body, fmt.Errorf("unexpected status code %d, want %d", resp.StatusCode, expectedStatusCode)
+		}
+		if logLevel > 1 {
+			logger.Println(method, url, resp.StatusCode)
+			logger.Println(string(body))
+		}
+		return body, nil
 	}
-	if resp.StatusCode != expectedStatusCode {
-		logger.Println(string(body))
-		return body, fmt.Errorf("unexpected status code %d, want %d", resp.StatusCode, expectedStatusCode)
-	}
-	if logLevel > 1 {
-		logger.Println(method, url, resp.StatusCode)
-		logger.Println(string(body))
-	}
-	return body, nil
 }
 
 // makev4APIRequest makes a request to the v4 API, which supports pagination.
