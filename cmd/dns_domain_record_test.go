@@ -655,3 +655,60 @@ notes: ""
 	Compare(objJ, expectedValue, t)
 	Compare(objY, expectedValue, t)
 }
+
+func TestExpectedDNSRecord_CAA_Unmarshal(t *testing.T) {
+	dataY := `
+name: ""
+type: CAA
+ttl: 18
+mode: standard
+region: default
+enabled: true
+value:
+  - tag: issue
+    data: letsencrypt.org
+    flags: 0
+    enabled: true
+  - tag: issue
+    data: pki.goog; cansignhttpexchanges=yes
+    flags: 0
+    enabled: true
+`
+	dataJ := `{"id":58345378,"name":"","type":"CAA","ttl":18,"mode":"standard","region":"default","enabled":true,"value":[{"tag":"issue","data":"letsencrypt.org","flags":0,"enabled":true},{"tag":"issue","data":"pki.goog; cansignhttpexchanges=yes","flags":0,"enabled":true}]}`
+
+	expectedValue := []*DNSCAAStandardItemValue{
+		{Tag: "issue", Data: "letsencrypt.org", Flags: 0, Enabled: true},
+		{Tag: "issue", Data: "pki.goog; cansignhttpexchanges=yes", Flags: 0, Enabled: true},
+	}
+
+	var objY ExpectedDNSRecord
+	err := yaml.Unmarshal([]byte(dataY), &objY)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var objJ ExpectedDNSRecord
+	err = json.Unmarshal([]byte(dataJ), &objJ)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if objJ.Type != "CAA" {
+		t.Errorf("expected %q, got %q", "CAA", objJ.Type)
+	}
+
+	res, ok := objJ.Value.([]*DNSCAAStandardItemValue)
+	if !ok {
+		t.Fatalf("unexpected type %T", objJ.Value)
+	}
+
+	if len(res) != len(expectedValue) {
+		t.Errorf("expected %d items, got %d", len(expectedValue), len(res))
+	}
+
+	for i, v := range res {
+		if !reflect.DeepEqual(v, expectedValue[i]) {
+			t.Errorf("item %d: expected %+v, got %+v", i, expectedValue[i], v)
+		}
+	}
+}

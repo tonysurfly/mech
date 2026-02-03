@@ -29,6 +29,13 @@ type DNSMXStandardItemValue struct {
 	Enabled  bool   `json:"enabled" yaml:"enabled"`
 }
 
+type DNSCAAStandardItemValue struct {
+	Tag     string `json:"tag" yaml:"tag"`
+	Data    string `json:"data" yaml:"data"`
+	Flags   int    `json:"flags" yaml:"flags"`
+	Enabled bool   `json:"enabled" yaml:"enabled"`
+}
+
 type DNSHTTPStandardItemValue struct {
 	Hard         bool   `json:"hard" yaml:"hard"`
 	RedirectType string `json:"redirectType" yaml:"redirectType"`
@@ -201,6 +208,29 @@ func populateDNSRecordValue(record interface{}) error {
 		valueObj.Title, _ = m["title"].(string)
 		valueObj.Keywords, _ = m["keywords"].(string)
 		valueObj.Description, _ = m["description"].(string)
+		s.Value = valueObj
+	case "CAA":
+		if s.Mode != "standard" {
+			return fmt.Errorf("unsupported mode %q for CAA record", s.Mode)
+		}
+		m, ok := s.Value.([]interface{})
+		if !ok {
+			return fmt.Errorf("unable to parse value for CAA record in standard mode, expected an array")
+		}
+		valueObj := make([]*DNSCAAStandardItemValue, 0)
+		for _, el := range m {
+			elMap, ok := el.(map[string]interface{})
+			if !ok {
+				return fmt.Errorf("unable to parse value for CAA record in standard mode, expected a map")
+			}
+			valueEl := DNSCAAStandardItemValue{
+				Tag:     elMap["tag"].(string),
+				Data:    elMap["data"].(string),
+				Flags:   toInt(elMap["flags"]),
+				Enabled: elMap["enabled"].(bool),
+			}
+			valueObj = append(valueObj, &valueEl)
+		}
 		s.Value = valueObj
 	default:
 		return fmt.Errorf("unsupported record type %q", s.Type)

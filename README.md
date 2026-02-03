@@ -31,7 +31,7 @@ functionality can easily be extended to support other Constellix resources.
    - [x] A
    - [x] AAAA
    - [x] ANAME
-   - [ ] CAA
+   - [x] CAA
    - [ ] CERT
    - [x] CNAME
    - [ ] HINFO
