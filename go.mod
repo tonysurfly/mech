@@ -1,13 +1,11 @@
 module mech
 
-go 1.24.0
-
-toolchain go1.24.3
+go 1.25.0
 
 require (
-	github.com/jedib0t/go-pretty/v6 v6.7.8
+	github.com/jedib0t/go-pretty/v6 v6.7.9
 	github.com/spf13/cobra v1.10.2
-	golang.org/x/exp v0.0.0-20260112195511-716be5621a96
+	golang.org/x/exp v0.0.0-20260312153236-7ab1446f8b90
 	gopkg.in/yaml.v3 v3.0.1
 )
 
