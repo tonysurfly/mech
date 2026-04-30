@@ -107,19 +107,19 @@ func populateDNSRecordValue(record interface{}) error {
 			}
 			valueObj.Values = values
 			s.Value = &valueObj
-		case "roundrobin-failover":
+		case "roundRobinFailover":
 			if s.Type == "CNAME" || s.Type == "ANAME" {
-				return fmt.Errorf("roundrobin-failover is not supported for CNAME records")
+				return fmt.Errorf("roundRobinFailover is not supported for CNAME records")
 			}
 			m, ok := s.Value.([]interface{})
 			if !ok {
-				return fmt.Errorf("unable to parse value for roundrobin-failover mode, expected an array")
+				return fmt.Errorf("unable to parse value for roundRobinFailover mode, expected an array")
 			}
 			valueObj := make([]*DNSFailoverItemValue, 0)
 			for _, el := range m {
 				elMap, ok := el.(map[string]interface{})
 				if !ok {
-					return fmt.Errorf("unable to parse value for roundrobin-failover mode, expected an map")
+					return fmt.Errorf("unable to parse value for roundRobinFailover mode, expected an map")
 				}
 				sonarCheckID, sonarCheckHost, err := getSonarCheckID(elMap["sonarCheckId"])
 				if err != nil {
