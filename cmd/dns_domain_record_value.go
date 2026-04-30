@@ -111,12 +111,24 @@ func populateDNSRecordValue(record interface{}) error {
 			if s.Type == "CNAME" || s.Type == "ANAME" {
 				return fmt.Errorf("roundRobinFailover is not supported for CNAME records")
 			}
-			m, ok := s.Value.([]interface{})
-			if !ok {
-				return fmt.Errorf("unable to parse value for roundRobinFailover mode, expected an array")
+			// The Constellix v4 API returns roundRobinFailover values as a flat
+			// array, but YAML configs may use the failover-style {mode, enabled,
+			// values} map. Accept either shape and normalize to the array form.
+			var items []interface{}
+			switch v := s.Value.(type) {
+			case []interface{}:
+				items = v
+			case map[string]interface{}:
+				rawValues, ok := v["values"].([]interface{})
+				if !ok {
+					return fmt.Errorf("unable to parse value for roundRobinFailover mode, expected values array in map")
+				}
+				items = rawValues
+			default:
+				return fmt.Errorf("unable to parse value for roundRobinFailover mode, expected an array or map")
 			}
 			valueObj := make([]*DNSFailoverItemValue, 0)
-			for _, el := range m {
+			for _, el := range items {
 				elMap, ok := el.(map[string]interface{})
 				if !ok {
 					return fmt.Errorf("unable to parse value for roundRobinFailover mode, expected an map")
@@ -126,7 +138,9 @@ func populateDNSRecordValue(record interface{}) error {
 					return err
 				}
 				if sonarCheckHost == "" {
-					sonarCheckHost = elMap["value"].(string)
+					if rawValue, ok := elMap["value"].(string); ok {
+						sonarCheckHost = rawValue
+					}
 				}
 				valueEl := DNSFailoverItemValue{
 					Enabled:      elMap["enabled"].(bool),

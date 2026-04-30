@@ -416,6 +416,53 @@ func TestExpectedDNSRecord_RRFailover_UnmarshalJSON(t *testing.T) {
 	}
 }
 
+func TestExpectedDNSRecord_RRFailoverMapShape_UnmarshalYAML(t *testing.T) {
+	data := `
+name: abc
+type: A
+ttl: 60
+mode: roundRobinFailover
+region: us-west
+enabled: true
+value:
+  mode: normal
+  enabled: true
+  values:
+    - enabled: true
+      order: 1
+      sonarCheckId: 100
+    - enabled: true
+      order: 2
+      sonarCheckId: 0
+      value: 1.2.3.4
+`
+	var obj ExpectedDNSRecord
+	err := yaml.Unmarshal([]byte(data), &obj)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	if obj.Mode != "roundRobinFailover" {
+		t.Errorf("expected %q, got %q", "roundRobinFailover", obj.Mode)
+		return
+	}
+	res, ok := obj.Value.([]*DNSFailoverItemValue)
+	if !ok {
+		t.Errorf("unexpected type %T", obj.Value)
+		return
+	}
+	if len(res) != 2 {
+		t.Errorf("expected 2, got %d", len(res))
+		return
+	}
+	if res[0].SonarCheckID != 100 || res[0].Order != 1 || !res[0].Enabled {
+		t.Errorf("unexpected first item: %+v", res[0])
+	}
+	if res[1].SonarCheckID != 0 || res[1].Value != "1.2.3.4" || res[1].Order != 2 {
+		t.Errorf("unexpected second item: %+v", res[1])
+	}
+}
+
 func TestExpectedDNSRecord_Pools_UnmarshalYAML(t *testing.T) {
 	data := `
 name: abc
