@@ -172,11 +172,18 @@ func (ex *ExpectedGeoProximity) SyncResourceCreate() error {
 	return nil
 }
 
-// GetGeoProximities returns active geo proximities
+// GetGeoProximities returns active geo proximities.
+// The result is cached in-memory to avoid hitting the API rate limit when
+// parsing configuration files that reference geoproximities repeatedly.
 var GetGeoProximities = func() ([]*GeoProximity, error) {
-	// Fetch HTTP checks
 	if logLevel > 0 {
 		logger.Println("Retrieving GeoProximities...")
+	}
+	if len(cachedGeoProximities) > 0 {
+		if logLevel > 0 {
+			logger.Println("  using cached GeoProximities")
+		}
+		return cachedGeoProximities, nil
 	}
 	endpoint, err := url.JoinPath(dnsRESTAPIBaseURL, "geoproximities")
 	if err != nil {
@@ -198,5 +205,6 @@ var GetGeoProximities = func() ([]*GeoProximity, error) {
 			geops = append(geops, tmpGP...)
 		}
 	}
+	cachedGeoProximities = geops
 	return geops, nil
 }
