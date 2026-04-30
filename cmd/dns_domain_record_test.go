@@ -279,7 +279,7 @@ func TestExpectedDNSRecord_RRFailover_UnmarshalYAML(t *testing.T) {
 name: abc
 type: A
 ttl: 60
-mode: roundrobin-failover
+mode: roundRobinFailover
 region: default
 enabled: true
 value:
@@ -302,8 +302,8 @@ value:
 		t.Errorf("expected %q, got %q", "abc", obj.Name)
 		return
 	}
-	if obj.Mode != "roundrobin-failover" {
-		t.Errorf("expected %q, got %q", "roundrobin-failover", obj.Mode)
+	if obj.Mode != "roundRobinFailover" {
+		t.Errorf("expected %q, got %q", "roundRobinFailover", obj.Mode)
 		return
 	}
 	expected := []*DNSFailoverItemValue{
@@ -354,7 +354,7 @@ value:
 }
 
 func TestExpectedDNSRecord_RRFailover_UnmarshalJSON(t *testing.T) {
-	data := `{"id":31847262,"name":"abc","type":"A","ttl":60,"mode":"roundrobin-failover","region":"default","ipfilter":null,"ipfilterDrop":false,"geoFailover":false,"geoproximity":null,"enabled":true,"value":[{"value":"159.69.18.28","order":1,"sonarCheckId":84874,"enabled":true,"active":false,"failed":true,"status":"DOWN"},{"value":"1.1.1.1","order":2,"sonarCheckId":null,"enabled":true,"active":false,"failed":false,"status":"N\/A"}]}`
+	data := `{"id":31847262,"name":"abc","type":"A","ttl":60,"mode":"roundRobinFailover","region":"default","ipfilter":null,"ipfilterDrop":false,"geoFailover":false,"geoproximity":null,"enabled":true,"value":[{"value":"159.69.18.28","order":1,"sonarCheckId":84874,"enabled":true,"active":false,"failed":true,"status":"DOWN"},{"value":"1.1.1.1","order":2,"sonarCheckId":null,"enabled":true,"active":false,"failed":false,"status":"N\/A"}]}`
 	var obj ExpectedDNSRecord
 	err := json.Unmarshal([]byte(data), &obj)
 	if err != nil {
@@ -365,8 +365,8 @@ func TestExpectedDNSRecord_RRFailover_UnmarshalJSON(t *testing.T) {
 		t.Errorf("expected %q, got %q", "abc", obj.Name)
 		return
 	}
-	if obj.Mode != "roundrobin-failover" {
-		t.Errorf("expected %q, got %q", "failover", obj.Mode)
+	if obj.Mode != "roundRobinFailover" {
+		t.Errorf("expected %q, got %q", "roundRobinFailover", obj.Mode)
 		return
 	}
 	expected := []*DNSFailoverItemValue{
