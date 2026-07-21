@@ -4,11 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log/slog"
+	"maps"
 	"net/url"
+	"slices"
 	"strconv"
 
-	"golang.org/x/exp/maps"
-	"golang.org/x/exp/slices"
 	yaml "gopkg.in/yaml.v3"
 )
 
@@ -90,12 +91,12 @@ func (ac *SonarHTTPCheck) SyncResourceDelete(constellixID int) error {
 	logger.Printf("  removing resource %q\n", ac.GetResourceID())
 	endpoint, err := url.JoinPath(sonarRESTAPIBaseURL, "http", fmt.Sprint(constellixID))
 	if err != nil {
-		return err
+		return fmt.Errorf("build Sonar HTTP check delete endpoint: %w", err)
 	}
 	body, err := makeSimpleAPIRequest("DELETE", endpoint, nil, 202)
 	if err != nil {
-		logger.Println("  unexpected response. Details: " + string(body))
-		return fmt.Errorf("unable to delete Sonar HTTP checks: %s", err)
+		L.Warn("unexpected response", slog.String("details", string(body)))
+		return fmt.Errorf("unable to delete Sonar HTTP check: %w", err)
 	}
 	return nil
 }
@@ -119,7 +120,7 @@ func (ex *ExpectedSonarHTTPCheck) UnmarshalYAML(value *yaml.Node) error {
 	var s SonarHTTPCheck
 	err := value.Decode(&s)
 	if err != nil {
-		return err
+		return fmt.Errorf("decode Sonar HTTP check: %w", err)
 	}
 	ex.SonarHTTPCheck = s
 
@@ -127,7 +128,7 @@ func (ex *ExpectedSonarHTTPCheck) UnmarshalYAML(value *yaml.Node) error {
 	dm := make(map[string]interface{})
 	err = value.Decode(&dm)
 	if err != nil {
-		return err
+		return fmt.Errorf("decode Sonar HTTP check fields: %w", err)
 	}
 
 	definedFields := make([]string, len(dm))
@@ -144,7 +145,7 @@ func (ex *ExpectedSonarHTTPCheck) UnmarshalYAML(value *yaml.Node) error {
 func (ex *ExpectedSonarHTTPCheck) Validate() error {
 	// Validate that all mandatory fields are present
 	for _, f := range ex.mandatoryFields {
-		if !slices.Contains(maps.Keys(ex.definedFieldsMap), f) {
+		if _, ok := ex.definedFieldsMap[f]; !ok {
 			return fmt.Errorf("%s: mandatory field %q is not defined", ex.Name, f)
 		}
 	}
@@ -153,7 +154,7 @@ func (ex *ExpectedSonarHTTPCheck) Validate() error {
 
 // GetDefinedStructFieldNames returns list of defined struct fields from local configuration
 func (ex *ExpectedSonarHTTPCheck) GetDefinedStructFieldNames() []string {
-	return maps.Values(ex.definedFieldsMap)
+	return slices.Collect(maps.Values(ex.definedFieldsMap))
 }
 
 // GetImmutableStructFields returns list of immutable struct fields
@@ -179,17 +180,17 @@ func (ex *ExpectedSonarHTTPCheck) SyncResourceUpdate(constellixID int) error {
 	logger.Printf("  updating resource %q\n", ex.GetResourceID())
 	endpoint, err := url.JoinPath(sonarRESTAPIBaseURL, "http", fmt.Sprint(constellixID))
 	if err != nil {
-		return err
+		return fmt.Errorf("build Sonar HTTP check update endpoint: %w", err)
 	}
-	payload, err := generatePayload(ex, maps.Keys(ex.definedFieldsMap), ex.immutableFields)
+	payload, err := generatePayload(ex, slices.Collect(maps.Keys(ex.definedFieldsMap)), ex.immutableFields)
 	if err != nil {
 		return err
 	}
 	payloadReader := bytes.NewReader(payload)
 	body, err := makeSimpleAPIRequest("PUT", endpoint, payloadReader, 200)
 	if err != nil {
-		logger.Println("  unexpected response. Details: " + string(body))
-		return fmt.Errorf("unable to update Sonar HTTP checks: %s", err)
+		L.Warn("unexpected response", slog.String("details", string(body)))
+		return fmt.Errorf("unable to update Sonar HTTP check: %w", err)
 	}
 	return nil
 }
@@ -198,17 +199,17 @@ func (ex *ExpectedSonarHTTPCheck) SyncResourceCreate() error {
 	logger.Printf("  creating new resource %q\n", ex.GetResourceID())
 	endpoint, err := url.JoinPath(sonarRESTAPIBaseURL, "http")
 	if err != nil {
-		return err
+		return fmt.Errorf("build Sonar HTTP check create endpoint: %w", err)
 	}
-	payload, err := generatePayload(ex, maps.Keys(ex.definedFieldsMap), nil)
+	payload, err := generatePayload(ex, slices.Collect(maps.Keys(ex.definedFieldsMap)), nil)
 	if err != nil {
 		return err
 	}
 	payloadReader := bytes.NewReader(payload)
 	body, err := makeSimpleAPIRequest("POST", endpoint, payloadReader, 201)
 	if err != nil {
-		logger.Println("  unexpected response. Details: " + string(body))
-		return fmt.Errorf("unable to create Sonar HTTP checks: %s", err)
+		L.Warn("unexpected response", slog.String("details", string(body)))
+		return fmt.Errorf("unable to create Sonar HTTP check: %w", err)
 	}
 	return nil
 }
@@ -217,29 +218,24 @@ func (ex *ExpectedSonarHTTPCheck) SyncResourceCreate() error {
 // We also cache this response to avoid making API calls when parsing configuration
 // files (@sonar,http:... syntax)
 func GetSonarHTTPChecks() ([]*SonarHTTPCheck, error) {
-	// Fetch HTTP checks
-	if logLevel > 0 {
-		logger.Println("Retrieving Sonar HTTP Checks...")
-	}
+	L.Debug("retrieving Sonar HTTP checks")
 	if len(cachedSonarHTTPChecks) > 0 {
-		if logLevel > 0 {
-			logger.Println("  using cached Sonar HTTP Checks")
-		}
+		L.Debug("using cached Sonar HTTP checks")
 		return cachedSonarHTTPChecks, nil
 	}
 	endpoint, err := url.JoinPath(sonarRESTAPIBaseURL, "http")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("build Sonar HTTP checks endpoint: %w", err)
 	}
 	data, err := makeSimpleAPIRequest("GET", endpoint, nil, 200)
 	if err != nil {
-		return nil, fmt.Errorf("unable to retrieve Sonar HTTP checks: %s", err)
+		return nil, fmt.Errorf("unable to retrieve Sonar HTTP checks: %w", err)
 	}
 
 	checks := make([]*SonarHTTPCheck, 0)
 	err = json.Unmarshal(data, &checks)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse Sonar HTTP checks response: %w", err)
 	}
 
 	cachedSonarHTTPChecks = checks
@@ -248,22 +244,19 @@ func GetSonarHTTPChecks() ([]*SonarHTTPCheck, error) {
 
 // GetSonarHTTPCheckStatus returns active Sonar Check status using runtime endpoint
 func GetSonarHTTPCheckStatus(id int) (ResourceRuntimeStatus, error) {
-	// Fetch HTTP checks
-	if logLevel > 0 {
-		logger.Printf("Retrieving status for Sonar HTTP Check %d...\n", id)
-	}
+	L.Debug("retrieving Sonar HTTP check status", slog.Int("id", id))
 	endpoint, err := url.JoinPath(sonarRESTAPIBaseURL, "http", strconv.Itoa(id), "status")
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("build Sonar HTTP check status endpoint: %w", err)
 	}
 	data, err := makeSimpleAPIRequest("GET", endpoint, nil, 200)
 	if err != nil {
-		return "", fmt.Errorf("unable to retrieve Sonar HTTP check status: %s", err)
+		return "", fmt.Errorf("unable to retrieve Sonar HTTP check status: %w", err)
 	}
 	status := RuntimeStatus{Status: "unknown"}
 	err = json.Unmarshal(data, &status)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("parse Sonar HTTP check status response: %w", err)
 	}
 	return status.Status, nil
 }

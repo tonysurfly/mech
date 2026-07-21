@@ -1,6 +1,3 @@
-/*
-Copyright © 2022 NAME HERE <EMAIL ADDRESS>
-*/
 package cmd
 
 import (
@@ -113,7 +110,7 @@ var sonarDiscoverStaticCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
-			logger.Printf("Found %d Sonar HTTP Checks\n", len(tcpChecks))
+			logger.Printf("Found %d Sonar TCP Checks\n", len(tcpChecks))
 			return writeDiscoveryResult(tcpChecks, outputFile)
 		default:
 			return fmt.Errorf(
@@ -236,7 +233,7 @@ var sonarSyncCmd = &cobra.Command{
 		expectedHTTPChecks := toResourceMatcher(config.SonarHTTPChecks)
 		err = Sync(expectedHTTPChecks, activeHTTPChecks, doit, allowRemoving, "Sonar HTTP checks")
 		if err != nil {
-			return err
+			return fmt.Errorf("sync sonar http checks: %w", err)
 		}
 
 		// Handle Sonar TCP Checks
@@ -248,7 +245,7 @@ var sonarSyncCmd = &cobra.Command{
 		expectedTCPChecks := toResourceMatcher(config.SonarTCPChecks)
 		err = Sync(expectedTCPChecks, activeTCPChecks, doit, allowRemoving, "Sonar TCP checks")
 		if err != nil {
-			return err
+			return fmt.Errorf("sync sonar tcp checks: %w", err)
 		}
 		var message string
 		if !doit {

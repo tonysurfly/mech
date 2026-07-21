@@ -3,9 +3,8 @@ package cmd
 import (
 	"fmt"
 	"reflect"
+	"slices"
 	"strconv"
-
-	"golang.org/x/exp/slices"
 )
 
 // IExpectedResource implements expected resource which is extracted from the

@@ -405,7 +405,7 @@ func Test_Sync_update_dry_immutable(t *testing.T) {
 		t.Errorf("expected error")
 		return
 	}
-	expected := "found change in immutable field: Port"
+	expected := `resource "Field1": found change in immutable field: Port`
 	if err.Error() != expected {
 		t.Errorf("want error %q, got %q", expected, err.Error())
 		return

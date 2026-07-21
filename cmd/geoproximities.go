@@ -4,10 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log/slog"
+	"maps"
 	"net/url"
+	"slices"
 
-	"golang.org/x/exp/maps"
-	"golang.org/x/exp/slices"
 	yaml "gopkg.in/yaml.v3"
 )
 
@@ -37,7 +38,7 @@ func (ac *GeoProximity) SyncResourceDelete(constellixID int) error {
 	logger.Printf("  removing resource %q\n", ac.GetResourceID())
 	endpoint, err := url.JoinPath(dnsRESTAPIBaseURL, "geoproximities", fmt.Sprint(constellixID))
 	if err != nil {
-		return err
+		return fmt.Errorf("build GeoProximity delete endpoint: %w", err)
 	}
 	data, err := makev4APIRequest("DELETE", endpoint, nil, 204)
 	if err != nil {
@@ -45,8 +46,8 @@ func (ac *GeoProximity) SyncResourceDelete(constellixID int) error {
 		for _, item := range data {
 			details += string(item)
 		}
-		logger.Println("  unexpected response. Details: " + details)
-		return fmt.Errorf("unable to delete GeoProximity: %s", err)
+		L.Warn("unexpected response", slog.String("details", details))
+		return fmt.Errorf("unable to delete GeoProximity: %w", err)
 	}
 	return nil
 }
@@ -70,7 +71,7 @@ func (ex *ExpectedGeoProximity) UnmarshalYAML(value *yaml.Node) error {
 	var s GeoProximity
 	err := value.Decode(&s)
 	if err != nil {
-		return err
+		return fmt.Errorf("decode GeoProximity: %w", err)
 	}
 	ex.GeoProximity = s
 
@@ -78,7 +79,7 @@ func (ex *ExpectedGeoProximity) UnmarshalYAML(value *yaml.Node) error {
 	dm := make(map[string]interface{})
 	err = value.Decode(&dm)
 	if err != nil {
-		return err
+		return fmt.Errorf("decode GeoProximity fields: %w", err)
 	}
 
 	definedFields := make([]string, len(dm))
@@ -95,7 +96,7 @@ func (ex *ExpectedGeoProximity) UnmarshalYAML(value *yaml.Node) error {
 func (ex *ExpectedGeoProximity) Validate() error {
 	// Validate that all mandatory fields are present
 	for _, f := range ex.mandatoryFields {
-		if !slices.Contains(maps.Keys(ex.definedFieldsMap), f) {
+		if _, ok := ex.definedFieldsMap[f]; !ok {
 			return fmt.Errorf("%s: mandatory field %q is not defined", ex.Name, f)
 		}
 	}
@@ -104,7 +105,7 @@ func (ex *ExpectedGeoProximity) Validate() error {
 
 // GetDefinedStructFieldNames returns list of defined struct fields from local configuration
 func (ex *ExpectedGeoProximity) GetDefinedStructFieldNames() []string {
-	return maps.Values(ex.definedFieldsMap)
+	return slices.Collect(maps.Values(ex.definedFieldsMap))
 }
 
 // GetImmutableStructFields returns list of immutable struct fields
@@ -130,9 +131,9 @@ func (ex *ExpectedGeoProximity) SyncResourceUpdate(constellixID int) error {
 	logger.Printf("  updating resource %q\n", ex.GetResourceID())
 	endpoint, err := url.JoinPath(dnsRESTAPIBaseURL, "geoproximities", fmt.Sprint(constellixID))
 	if err != nil {
-		return err
+		return fmt.Errorf("build GeoProximity update endpoint: %w", err)
 	}
-	payload, err := generatePayload(ex, maps.Keys(ex.definedFieldsMap), nil)
+	payload, err := generatePayload(ex, slices.Collect(maps.Keys(ex.definedFieldsMap)), nil)
 	if err != nil {
 		return err
 	}
@@ -143,8 +144,8 @@ func (ex *ExpectedGeoProximity) SyncResourceUpdate(constellixID int) error {
 		for _, item := range data {
 			details += string(item)
 		}
-		logger.Println("  unexpected response. Details: " + details)
-		return fmt.Errorf("unable to update GeoProximity: %s", err)
+		L.Warn("unexpected response", slog.String("details", details))
+		return fmt.Errorf("unable to update GeoProximity: %w", err)
 	}
 	return nil
 }
@@ -153,9 +154,9 @@ func (ex *ExpectedGeoProximity) SyncResourceCreate() error {
 	logger.Printf("  creating new resource %q\n", ex.GetResourceID())
 	endpoint, err := url.JoinPath(dnsRESTAPIBaseURL, "geoproximities")
 	if err != nil {
-		return err
+		return fmt.Errorf("build GeoProximity create endpoint: %w", err)
 	}
-	payload, err := generatePayload(ex, maps.Keys(ex.definedFieldsMap), nil)
+	payload, err := generatePayload(ex, slices.Collect(maps.Keys(ex.definedFieldsMap)), nil)
 	if err != nil {
 		return err
 	}
@@ -166,25 +167,22 @@ func (ex *ExpectedGeoProximity) SyncResourceCreate() error {
 		for _, item := range data {
 			details += string(item)
 		}
-		logger.Println("  unexpected response. Details: " + details)
-		return fmt.Errorf("unable to create GeoProximity: %s", err)
+		L.Warn("unexpected response", slog.String("details", details))
+		return fmt.Errorf("unable to create GeoProximity: %w", err)
 	}
 	return nil
 }
 
 // GetGeoProximities returns active geo proximities
 var GetGeoProximities = func() ([]*GeoProximity, error) {
-	// Fetch HTTP checks
-	if logLevel > 0 {
-		logger.Println("Retrieving GeoProximities...")
-	}
+	L.Debug("retrieving GeoProximities")
 	endpoint, err := url.JoinPath(dnsRESTAPIBaseURL, "geoproximities")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("build GeoProximities endpoint: %w", err)
 	}
 	data, err := makev4APIRequest("GET", endpoint, nil, 200)
 	if err != nil {
-		return nil, fmt.Errorf("unable to retrieve GeoProximities: %s", err)
+		return nil, fmt.Errorf("unable to retrieve GeoProximities: %w", err)
 	}
 
 	geops := make([]*GeoProximity, 0)
@@ -192,7 +190,7 @@ var GetGeoProximities = func() ([]*GeoProximity, error) {
 		var tmpGP []*GeoProximity
 		err = json.Unmarshal(item, &tmpGP)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("parse GeoProximities response: %w", err)
 		}
 		if len(tmpGP) > 0 {
 			geops = append(geops, tmpGP...)

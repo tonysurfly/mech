@@ -1,10 +1,8 @@
-/*
-Copyright © 2022 NAME HERE <EMAIL ADDRESS>
-*/
 package cmd
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 
 	"github.com/jedib0t/go-pretty/v6/table"
@@ -61,11 +59,8 @@ var dnsDiscoverRecordsCmd = &cobra.Command{
 
 		if domainID == 0 {
 			return fmt.Errorf("domain %s not found", args[0])
-		} else {
-			if logLevel > 0 {
-				logger.Printf("domain %s found with ID %d", args[0], domainID)
-			}
 		}
+		L.Debug("domain found", slog.String("domain", args[0]), slog.Int("id", domainID))
 		records, err := GetDNSRecords(domainID)
 		if err != nil {
 			return err
@@ -181,14 +176,11 @@ var dnsSyncCmd = &cobra.Command{
 
 			if domainID == 0 {
 				return fmt.Errorf("domain %s not found", domainName)
-			} else {
-				if rootVerbose {
-					logger.Printf("domain %s found with ID %d", domainName, domainID)
-				}
 			}
+			L.Debug("domain found", slog.String("domain", domainName), slog.Int("id", domainID))
 			records, err := GetDNSRecords(domainID)
 			if err != nil {
-				return err
+				return fmt.Errorf("sync domain %s: %w", domainName, err)
 			}
 			for _, item := range config.DNS[domainName] {
 				item.domainIDInConstellix = domainID
@@ -197,7 +189,7 @@ var dnsSyncCmd = &cobra.Command{
 			expectedRecords := toResourceMatcher(config.DNS[domainName])
 			err = Sync(expectedRecords, activeRecords, doit, allowRemoving, "DNS records for "+domainName)
 			if err != nil {
-				return err
+				return fmt.Errorf("sync domain %s: %w", domainName, err)
 			}
 		}
 		var message string

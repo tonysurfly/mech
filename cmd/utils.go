@@ -2,9 +2,11 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"reflect"
 	"regexp"
@@ -105,6 +107,14 @@ func getTag(obj interface{}, fieldName string, tagType string) string {
 	return ""
 }
 
+// closeBody closes an HTTP response body. Close errors on an already-read
+// response are not actionable, so they are only surfaced via --trace.
+func closeBody(body io.Closer) {
+	if err := body.Close(); err != nil {
+		L.Log(context.Background(), LevelTrace, "close response body", "err", err)
+	}
+}
+
 // makeSimpleAPIRequest makes a simple API request, normally to the Sonar API as
 // it doesn't support pagination
 func makeSimpleAPIRequest(method string, url string, payload io.Reader, expectedStatusCode int) (respBody []byte, err error) {
@@ -112,7 +122,7 @@ func makeSimpleAPIRequest(method string, url string, payload io.Reader, expected
 	if payload != nil {
 		payloadBytes, err = io.ReadAll(payload)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("read request payload for %s %s: %w", method, url, err)
 		}
 	}
 
@@ -123,51 +133,44 @@ func makeSimpleAPIRequest(method string, url string, payload io.Reader, expected
 	for {
 		req, err := http.NewRequest(method, url, bytes.NewReader(payloadBytes))
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("build request %s %s: %w", method, url, err)
 		}
 		req.Header.Add("x-cns-security-token", buildSecurityToken())
 		req.Header.Add("Content-Type", "application/json")
-		if logLevel > 0 {
-			logger.Printf("  requesting %s %s ...\n", method, url)
-			if payloadBytes != nil {
-				logger.Println("  payload: " + string(payloadBytes))
-			} else {
-				logger.Println("  no payload")
-			}
-		}
+		L.Debug("requesting resource",
+			slog.String("method", method), slog.String("url", url), slog.String("payload", string(payloadBytes)))
 		resp, err := client.Do(req)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("request %s %s: %w", method, url, err)
 		}
 
 		if resp.StatusCode == http.StatusTooManyRequests {
 			if resetHeaderValue, ok := resp.Header["X-Ratelimit-Reset"]; ok {
 				if sleep, err := strconv.ParseInt(resetHeaderValue[0], 10, 64); err == nil {
-					logger.Printf("Rate limit exceeded, waiting %d seconds...\n", sleep)
-					resp.Body.Close()
+					L.Warn("rate limit exceeded, waiting", slog.Int64("seconds", sleep))
+					closeBody(resp.Body)
 					time.Sleep(time.Duration(sleep) * time.Second)
 					continue
 				}
 			}
-			logger.Printf("Rate limit exceeded, waiting %d seconds...\n", rateLimitWaitTime)
-			resp.Body.Close()
+			L.Warn("rate limit exceeded, waiting", slog.Int("seconds", rateLimitWaitTime))
+			closeBody(resp.Body)
 			time.Sleep(time.Duration(rateLimitWaitTime) * time.Second)
 			continue
 		}
 
-		defer resp.Body.Close()
+		defer closeBody(resp.Body)
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("read response body for %s %s: %w", method, url, err)
 		}
 		if resp.StatusCode != expectedStatusCode {
-			logger.Println(string(body))
+			L.Warn("unexpected status code",
+				slog.Int("got", resp.StatusCode), slog.Int("want", expectedStatusCode), slog.String("body", string(body)))
 			return body, fmt.Errorf("unexpected status code %d, want %d", resp.StatusCode, expectedStatusCode)
 		}
-		if logLevel > 1 {
-			logger.Println(method, url, resp.StatusCode)
-			logger.Println(string(body))
-		}
+		L.Log(context.Background(), LevelTrace, "response",
+			slog.String("method", method), slog.String("url", url), slog.Int("status", resp.StatusCode), slog.String("body", string(body)))
 		return body, nil
 	}
 }
@@ -179,13 +182,13 @@ func makev4APIRequest(method string, url string, payload io.Reader, expectedStat
 	for next {
 		data, err := makeSimpleAPIRequest(method, url, payload, expectedStatusCode)
 		if err != nil {
-			return nil, fmt.Errorf("unable to retrieve resource: %s", err)
+			return nil, fmt.Errorf("unable to retrieve resource: %w", err)
 		}
 		if len(data) != 0 {
 			resp := DNSv4Response{}
 			err = json.Unmarshal(data, &resp)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("parse v4 response for %s %s: %w", method, url, err)
 			}
 			respBodys = append(respBodys, resp.Data)
 			if resp.Meta.Links.Next != "" {
@@ -199,7 +202,7 @@ func makev4APIRequest(method string, url string, payload io.Reader, expectedStat
 				if method == "GET" && resp.Meta.Pagination.PerPage == resp.Meta.Pagination.Count {
 					parsedURL, err := libURL.Parse(url)
 					if err != nil {
-						return nil, err
+						return nil, fmt.Errorf("parse next page url %q: %w", url, err)
 					}
 					parsedURL.RawQuery = fmt.Sprintf("page=%d", resp.Meta.Pagination.CurrentPage+1)
 					url = parsedURL.String()

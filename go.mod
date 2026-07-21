@@ -5,7 +5,6 @@ go 1.25.0
 require (
 	github.com/jedib0t/go-pretty/v6 v6.8.2
 	github.com/spf13/cobra v1.10.2
-	golang.org/x/exp v0.0.0-20260611194520-c48552f49976
 	gopkg.in/yaml.v3 v3.0.1
 )
 

@@ -47,9 +47,28 @@ type DNSHTTPStandardItemValue struct {
 
 type aliasDNSRecord DNSRecord
 
+// asString returns m[key] as a string, or an error if the field is missing or
+// has a different type.
+func asString(m map[string]interface{}, key string) (string, error) {
+	v, ok := m[key].(string)
+	if !ok {
+		return "", fmt.Errorf("expected field %q to be a string, got %T", key, m[key])
+	}
+	return v, nil
+}
+
+// asBool returns m[key] as a bool, or an error if the field is missing or has
+// a different type.
+func asBool(m map[string]interface{}, key string) (bool, error) {
+	v, ok := m[key].(bool)
+	if !ok {
+		return false, fmt.Errorf("expected field %q to be a bool, got %T", key, m[key])
+	}
+	return v, nil
+}
+
 // populateDNSRecordValue populates the Value field of a DNSRecord based on the
 // Mode field.
-// TODO: be carefull with type casting, use similar to sonarCheckID everywhere
 func populateDNSRecordValue(record interface{}) error {
 	s, ok := record.(*DNSRecord)
 	if !ok {
@@ -69,9 +88,17 @@ func populateDNSRecordValue(record interface{}) error {
 				if !ok {
 					return fmt.Errorf("unable to parse value for standard mode, expected an map")
 				}
+				value, err := asString(elMap, "value")
+				if err != nil {
+					return err
+				}
+				enabled, err := asBool(elMap, "enabled")
+				if err != nil {
+					return err
+				}
 				valueEl := DNSStandardItemValue{
-					Value:   elMap["value"].(string),
-					Enabled: elMap["enabled"].(bool),
+					Value:   value,
+					Enabled: enabled,
 				}
 				valueObj = append(valueObj, &valueEl)
 			}
@@ -82,10 +109,22 @@ func populateDNSRecordValue(record interface{}) error {
 			if !ok {
 				return fmt.Errorf("unable to parse value for failover mode, expected an map")
 			}
-			valueObj.Mode = m["mode"].(string)
-			valueObj.Enabled = m["enabled"].(bool)
+			mode, err := asString(m, "mode")
+			if err != nil {
+				return err
+			}
+			enabled, err := asBool(m, "enabled")
+			if err != nil {
+				return err
+			}
+			valueObj.Mode = mode
+			valueObj.Enabled = enabled
+			valueItems, ok := m["values"].([]interface{})
+			if !ok {
+				return fmt.Errorf("unable to parse values for failover mode, expected an array")
+			}
 			values := make([]*DNSFailoverItemValue, 0)
-			for _, valueItem := range m["values"].([]interface{}) {
+			for _, valueItem := range valueItems {
 				valueItemMap, ok := valueItem.(map[string]interface{})
 				if !ok {
 					return fmt.Errorf("unable to parse value for value of failover mode, expected an map")
@@ -95,10 +134,17 @@ func populateDNSRecordValue(record interface{}) error {
 					return err
 				}
 				if sonarCheckHost == "" {
-					sonarCheckHost = valueItemMap["value"].(string)
+					sonarCheckHost, err = asString(valueItemMap, "value")
+					if err != nil {
+						return err
+					}
+				}
+				itemEnabled, err := asBool(valueItemMap, "enabled")
+				if err != nil {
+					return err
 				}
 				valueItemObj := DNSFailoverItemValue{
-					Enabled:      valueItemMap["enabled"].(bool),
+					Enabled:      itemEnabled,
 					Order:        toInt(valueItemMap["order"]),
 					Value:        sonarCheckHost,
 					SonarCheckID: sonarCheckID,
@@ -126,10 +172,17 @@ func populateDNSRecordValue(record interface{}) error {
 					return err
 				}
 				if sonarCheckHost == "" {
-					sonarCheckHost = elMap["value"].(string)
+					sonarCheckHost, err = asString(elMap, "value")
+					if err != nil {
+						return err
+					}
+				}
+				enabled, err := asBool(elMap, "enabled")
+				if err != nil {
+					return err
 				}
 				valueEl := DNSFailoverItemValue{
-					Enabled:      elMap["enabled"].(bool),
+					Enabled:      enabled,
 					Order:        toInt(elMap["order"]),
 					Value:        sonarCheckHost,
 					SonarCheckID: sonarCheckID,
@@ -164,10 +217,18 @@ func populateDNSRecordValue(record interface{}) error {
 			if !ok {
 				return fmt.Errorf("unable to parse value for standard mode, expected an map")
 			}
+			server, err := asString(elMap, "server")
+			if err != nil {
+				return err
+			}
+			enabled, err := asBool(elMap, "enabled")
+			if err != nil {
+				return err
+			}
 			valueEl := DNSMXStandardItemValue{
-				Server:   elMap["server"].(string),
+				Server:   server,
 				Priority: toInt(elMap["priority"]),
-				Enabled:  elMap["enabled"].(bool),
+				Enabled:  enabled,
 			}
 			valueObj = append(valueObj, &valueEl)
 		}
@@ -186,9 +247,17 @@ func populateDNSRecordValue(record interface{}) error {
 			if !ok {
 				return fmt.Errorf("unable to parse value for TXT record in standard mode, expected an map")
 			}
+			value, err := asString(elMap, "value")
+			if err != nil {
+				return err
+			}
+			enabled, err := asBool(elMap, "enabled")
+			if err != nil {
+				return err
+			}
 			valueEl := DNSStandardItemValue{
-				Value:   elMap["value"].(string),
-				Enabled: elMap["enabled"].(bool),
+				Value:   value,
+				Enabled: enabled,
 			}
 			valueObj = append(valueObj, &valueEl)
 			s.Value = valueObj
@@ -223,11 +292,23 @@ func populateDNSRecordValue(record interface{}) error {
 			if !ok {
 				return fmt.Errorf("unable to parse value for CAA record in standard mode, expected a map")
 			}
+			tag, err := asString(elMap, "tag")
+			if err != nil {
+				return err
+			}
+			data, err := asString(elMap, "data")
+			if err != nil {
+				return err
+			}
+			enabled, err := asBool(elMap, "enabled")
+			if err != nil {
+				return err
+			}
 			valueEl := DNSCAAStandardItemValue{
-				Tag:     elMap["tag"].(string),
-				Data:    elMap["data"].(string),
+				Tag:     tag,
+				Data:    data,
 				Flags:   toInt(elMap["flags"]),
-				Enabled: elMap["enabled"].(bool),
+				Enabled: enabled,
 			}
 			valueObj = append(valueObj, &valueEl)
 		}

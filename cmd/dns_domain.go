@@ -25,23 +25,21 @@ type DNSDomain struct {
 
 // GetDNSDomains returns active DNS domains in Constellix
 func GetDNSDomains() ([]*DNSDomain, error) {
-	if logLevel > 0 {
-		logger.Println("Retrieving DNS domains...")
-	}
+	L.Debug("retrieving DNS domains")
 	endpoint, err := url.JoinPath(dnsRESTAPIBaseURL, "domains")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("build DNS domains endpoint: %w", err)
 	}
 	data, err := makev4APIRequest("GET", endpoint, nil, 200)
 	if err != nil {
-		return nil, fmt.Errorf("unable to retrieve DNS domains list: %s", err)
+		return nil, fmt.Errorf("unable to retrieve DNS domains list: %w", err)
 	}
 	var domains []*DNSDomain
 	for _, item := range data {
 		tmpDomains := []*DNSDomain{}
 		err = json.Unmarshal(item, &tmpDomains)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("parse DNS domains response: %w", err)
 		}
 		domains = append(domains, tmpDomains...)
 	}

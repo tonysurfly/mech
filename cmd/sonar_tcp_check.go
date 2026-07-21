@@ -4,10 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log/slog"
+	"maps"
 	"net/url"
+	"slices"
 
-	"golang.org/x/exp/maps"
-	"golang.org/x/exp/slices"
 	yaml "gopkg.in/yaml.v3"
 )
 
@@ -70,12 +71,12 @@ func (ac *SonarTCPCheck) SyncResourceDelete(constellixID int) error {
 	logger.Printf("  removing resource %q\n", ac.GetResourceID())
 	endpoint, err := url.JoinPath(sonarRESTAPIBaseURL, "tcp", fmt.Sprint(constellixID))
 	if err != nil {
-		return err
+		return fmt.Errorf("build Sonar TCP check delete endpoint: %w", err)
 	}
 	body, err := makeSimpleAPIRequest("DELETE", endpoint, nil, 202)
 	if err != nil {
-		logger.Println("  unexpected response. Details: " + string(body))
-		return fmt.Errorf("unable to delete Sonar TCP checks: %s", err)
+		L.Warn("unexpected response", slog.String("details", string(body)))
+		return fmt.Errorf("unable to delete Sonar TCP check: %w", err)
 	}
 	return nil
 }
@@ -99,7 +100,7 @@ func (ex *ExpectedSonarTCPCheck) UnmarshalYAML(value *yaml.Node) error {
 	var s SonarTCPCheck
 	err := value.Decode(&s)
 	if err != nil {
-		return err
+		return fmt.Errorf("decode Sonar TCP check: %w", err)
 	}
 	ex.SonarTCPCheck = s
 
@@ -107,7 +108,7 @@ func (ex *ExpectedSonarTCPCheck) UnmarshalYAML(value *yaml.Node) error {
 	dm := make(map[string]interface{})
 	err = value.Decode(&dm)
 	if err != nil {
-		return err
+		return fmt.Errorf("decode Sonar TCP check fields: %w", err)
 	}
 
 	definedFields := make([]string, len(dm))
@@ -124,7 +125,7 @@ func (ex *ExpectedSonarTCPCheck) UnmarshalYAML(value *yaml.Node) error {
 func (ex *ExpectedSonarTCPCheck) Validate() error {
 	// Validate that all mandatory fields are present
 	for _, f := range ex.mandatoryFields {
-		if !slices.Contains(maps.Keys(ex.definedFieldsMap), f) {
+		if _, ok := ex.definedFieldsMap[f]; !ok {
 			return fmt.Errorf("%s: mandatory field %q is not defined", ex.Name, f)
 		}
 	}
@@ -133,7 +134,7 @@ func (ex *ExpectedSonarTCPCheck) Validate() error {
 
 // GetDefinedStructFieldNames returns list of defined struct fields from local configuration
 func (ex *ExpectedSonarTCPCheck) GetDefinedStructFieldNames() []string {
-	return maps.Values(ex.definedFieldsMap)
+	return slices.Collect(maps.Values(ex.definedFieldsMap))
 }
 
 // GetImmutableStructFields returns list of immutable struct fields
@@ -159,17 +160,17 @@ func (ex *ExpectedSonarTCPCheck) SyncResourceUpdate(constellixID int) error {
 	logger.Printf("  updating resource %q\n", ex.GetResourceID())
 	endpoint, err := url.JoinPath(sonarRESTAPIBaseURL, "tcp", fmt.Sprint(constellixID))
 	if err != nil {
-		return err
+		return fmt.Errorf("build Sonar TCP check update endpoint: %w", err)
 	}
-	payload, err := generatePayload(ex, maps.Keys(ex.definedFieldsMap), ex.immutableFields)
+	payload, err := generatePayload(ex, slices.Collect(maps.Keys(ex.definedFieldsMap)), ex.immutableFields)
 	if err != nil {
 		return err
 	}
 	payloadReader := bytes.NewReader(payload)
 	body, err := makeSimpleAPIRequest("PUT", endpoint, payloadReader, 200)
 	if err != nil {
-		logger.Println("  unexpected response. Details: " + string(body))
-		return fmt.Errorf("unable to update Sonar TCP checks: %s", err)
+		L.Warn("unexpected response", slog.String("details", string(body)))
+		return fmt.Errorf("unable to update Sonar TCP check: %w", err)
 	}
 	return nil
 }
@@ -178,40 +179,37 @@ func (ex *ExpectedSonarTCPCheck) SyncResourceCreate() error {
 	logger.Printf("  creating new resource %q\n", ex.GetResourceID())
 	endpoint, err := url.JoinPath(sonarRESTAPIBaseURL, "tcp")
 	if err != nil {
-		return err
+		return fmt.Errorf("build Sonar TCP check create endpoint: %w", err)
 	}
-	payload, err := generatePayload(ex, maps.Keys(ex.definedFieldsMap), nil)
+	payload, err := generatePayload(ex, slices.Collect(maps.Keys(ex.definedFieldsMap)), nil)
 	if err != nil {
 		return err
 	}
 	payloadReader := bytes.NewReader(payload)
 	body, err := makeSimpleAPIRequest("POST", endpoint, payloadReader, 201)
 	if err != nil {
-		logger.Println("  unexpected response. Details: " + string(body))
-		return fmt.Errorf("unable to create Sonar TCP checks: %s", err)
+		L.Warn("unexpected response", slog.String("details", string(body)))
+		return fmt.Errorf("unable to create Sonar TCP check: %w", err)
 	}
 	return nil
 }
 
 // GetSonarTCPChecks returns active Sonar Checks
 func GetSonarTCPChecks() ([]*SonarTCPCheck, error) {
-	// Fetch TCP checks
-	if logLevel > 0 {
-		logger.Println("Retrieving Sonar TCP Checks...")
-	}
+	L.Debug("retrieving Sonar TCP checks")
 	endpoint, err := url.JoinPath(sonarRESTAPIBaseURL, "tcp")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("build Sonar TCP checks endpoint: %w", err)
 	}
 	data, err := makeSimpleAPIRequest("GET", endpoint, nil, 200)
 	if err != nil {
-		return nil, fmt.Errorf("unable to retrieve Sonar TCP checks: %s", err)
+		return nil, fmt.Errorf("unable to retrieve Sonar TCP checks: %w", err)
 	}
 
 	checks := make([]*SonarTCPCheck, 0)
 	err = json.Unmarshal(data, &checks)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse Sonar TCP checks response: %w", err)
 	}
 	return checks, nil
 }

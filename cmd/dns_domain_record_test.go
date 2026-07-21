@@ -2,10 +2,13 @@ package cmd
 
 import (
 	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
+	"slices"
 	"testing"
 
-	"golang.org/x/exp/slices"
 	yaml "gopkg.in/yaml.v3"
 )
 
@@ -710,5 +713,181 @@ value:
 		if !reflect.DeepEqual(v, expectedValue[i]) {
 			t.Errorf("item %d: expected %+v, got %+v", i, expectedValue[i], v)
 		}
+	}
+}
+
+func TestDNSRecord_GetResourceID(t *testing.T) {
+	r := &DNSRecord{Type: "A", Name: "test", Region: "default"}
+	expected := `A "test" (default, 0)`
+	if got := r.GetResourceID(); got != expected {
+		t.Errorf("expected %q, got %q", expected, got)
+	}
+}
+
+func TestDNSRecord_GetResourceID_with_geoproximity(t *testing.T) {
+	r := &DNSRecord{Type: "A", Name: "test", Region: "default", GeoProximity: 7}
+	expected := `A "test" (default, 7)`
+	if got := r.GetResourceID(); got != expected {
+		t.Errorf("expected %q, got %q", expected, got)
+	}
+}
+
+func TestDNSRecord_GetConstellixID(t *testing.T) {
+	r := &DNSRecord{ID: 42}
+	if got := r.GetConstellixID(); got != 42 {
+		t.Errorf("expected %d, got %d", 42, got)
+	}
+}
+
+func TestDNSRecord_SyncResourceDelete_no_domain_id(t *testing.T) {
+	r := &DNSRecord{Type: "A", Name: "test"}
+	if err := r.SyncResourceDelete(42); err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
+func TestDNSRecord_SyncResourceDelete(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "DELETE" {
+			t.Errorf("expected DELETE, got %s", r.Method)
+		}
+		if r.URL.Path != "/domains/7/records/42" {
+			t.Errorf("expected path %q, got %q", "/domains/7/records/42", r.URL.Path)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer ts.Close()
+
+	originalDNSRESTAPIBaseURL := dnsRESTAPIBaseURL
+	defer func() { dnsRESTAPIBaseURL = originalDNSRESTAPIBaseURL }()
+	dnsRESTAPIBaseURL = ts.URL
+
+	r := &DNSRecord{Type: "A", Name: "test", domainIDInConstellix: 7}
+	if err := r.SyncResourceDelete(42); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestExpectedDNSRecord_SyncResourceUpdate_no_domain_id(t *testing.T) {
+	ex := &ExpectedDNSRecord{}
+	if err := ex.SyncResourceUpdate(42); err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
+func TestExpectedDNSRecord_SyncResourceUpdate(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "PATCH" {
+			t.Errorf("expected PATCH, got %s", r.Method)
+		}
+		if r.URL.Path != "/domains/7/records/42" {
+			t.Errorf("expected path %q, got %q", "/domains/7/records/42", r.URL.Path)
+		}
+		body, _ := io.ReadAll(r.Body)
+		expected := `{"name":"test","type":"TXT"}`
+		if string(body) != expected {
+			t.Errorf("expected body %q, got %q", expected, string(body))
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer ts.Close()
+
+	originalDNSRESTAPIBaseURL := dnsRESTAPIBaseURL
+	defer func() { dnsRESTAPIBaseURL = originalDNSRESTAPIBaseURL }()
+	dnsRESTAPIBaseURL = ts.URL
+
+	data := `
+name: test
+type: TXT
+mode: standard
+value:
+  - value: hello
+    enabled: true
+`
+	var ex ExpectedDNSRecord
+	if err := yaml.Unmarshal([]byte(data), &ex); err != nil {
+		t.Fatal(err)
+	}
+	// Only exercise the "name" and "type" fields in the payload; "mode" and
+	// "value" are required to parse the record but not under test here.
+	ex.definedFieldsMap = map[string]string{"name": "Name", "type": "Type"}
+	ex.domainIDInConstellix = 7
+	if err := ex.SyncResourceUpdate(42); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestExpectedDNSRecord_SyncResourceCreate_no_domain_id(t *testing.T) {
+	ex := &ExpectedDNSRecord{}
+	if err := ex.SyncResourceCreate(); err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
+func TestExpectedDNSRecord_SyncResourceCreate(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			t.Errorf("expected POST, got %s", r.Method)
+		}
+		if r.URL.Path != "/domains/7/records" {
+			t.Errorf("expected path %q, got %q", "/domains/7/records", r.URL.Path)
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer ts.Close()
+
+	originalDNSRESTAPIBaseURL := dnsRESTAPIBaseURL
+	defer func() { dnsRESTAPIBaseURL = originalDNSRESTAPIBaseURL }()
+	dnsRESTAPIBaseURL = ts.URL
+
+	data := `
+name: test
+type: TXT
+mode: standard
+value:
+  - value: hello
+    enabled: true
+`
+	var ex ExpectedDNSRecord
+	if err := yaml.Unmarshal([]byte(data), &ex); err != nil {
+		t.Fatal(err)
+	}
+	ex.domainIDInConstellix = 7
+	if err := ex.SyncResourceCreate(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestGetDNSRecords(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/domains/7/records" {
+			t.Errorf("expected path %q, got %q", "/domains/7/records", r.URL.Path)
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{
+			"data": [
+				{"id": 1, "name": "test", "type": "A", "mode": "standard", "value": [{"value": "1.1.1.1", "enabled": true}]}
+			],
+			"meta": {
+				"pagination": {"total": 1, "count": 1, "perPage": 10, "currentPage": 1, "totalPages": 1},
+				"links": {"next": ""}
+			}
+		}`))
+	}))
+	defer ts.Close()
+
+	originalDNSRESTAPIBaseURL := dnsRESTAPIBaseURL
+	defer func() { dnsRESTAPIBaseURL = originalDNSRESTAPIBaseURL }()
+	dnsRESTAPIBaseURL = ts.URL
+
+	records, err := GetDNSRecords(7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].domainIDInConstellix != 7 {
+		t.Errorf("expected domainIDInConstellix %d, got %d", 7, records[0].domainIDInConstellix)
 	}
 }

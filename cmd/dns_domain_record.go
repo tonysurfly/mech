@@ -4,10 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log/slog"
+	"maps"
 	"net/url"
+	"slices"
 
-	"golang.org/x/exp/maps"
-	"golang.org/x/exp/slices"
 	"gopkg.in/yaml.v3"
 )
 
@@ -35,20 +36,20 @@ func (ac *DNSRecord) UnmarshalJSON(b []byte) error {
 	var alias aliasDNSRecord
 	err := json.Unmarshal(b, &alias)
 	if err != nil {
-		return err
+		return fmt.Errorf("unmarshal DNS record: %w", err)
 	}
 	s := DNSRecord(alias)
 	err = populateDNSRecordValue(&s)
 	if err != nil {
-		return err
+		return fmt.Errorf("record %s (%s): %w", s.Name, s.Type, err)
 	}
 	err = populateDNSRecordIPFilterForJSON(&s)
 	if err != nil {
-		return err
+		return fmt.Errorf("record %s (%s): %w", s.Name, s.Type, err)
 	}
 	err = populateDNSRecordGeoproximityForJSON(&s)
 	if err != nil {
-		return err
+		return fmt.Errorf("record %s (%s): %w", s.Name, s.Type, err)
 	}
 	*ac = s
 	return nil
@@ -72,7 +73,7 @@ func (ac *DNSRecord) GetConstellixID() int {
 func (ac *DNSRecord) SyncResourceDelete(constellixID int) error {
 	logger.Printf("  removing resource %q\n", ac.GetResourceID())
 	if ac.domainIDInConstellix == 0 {
-		return fmt.Errorf("unable to create DNS record: domain ID is not defined (internal error)")
+		return fmt.Errorf("unable to delete DNS record: domain ID is not defined (internal error)")
 	}
 	endpoint, err := url.JoinPath(
 		dnsRESTAPIBaseURL,
@@ -82,7 +83,7 @@ func (ac *DNSRecord) SyncResourceDelete(constellixID int) error {
 		fmt.Sprintf("%d", constellixID),
 	)
 	if err != nil {
-		return err
+		return fmt.Errorf("build DNS record delete endpoint: %w", err)
 	}
 	data, err := makev4APIRequest("DELETE", endpoint, nil, 204)
 	if err != nil {
@@ -90,8 +91,8 @@ func (ac *DNSRecord) SyncResourceDelete(constellixID int) error {
 		for _, item := range data {
 			details += string(item)
 		}
-		logger.Println("  unexpected response. Details: " + details)
-		return fmt.Errorf("unable to delete DNS record: %s", err)
+		L.Warn("unexpected response", slog.String("details", details))
+		return fmt.Errorf("unable to delete DNS record: %w", err)
 	}
 	return nil
 }
@@ -115,20 +116,20 @@ func (ex *ExpectedDNSRecord) UnmarshalYAML(value *yaml.Node) error {
 	var s DNSRecord
 	err := value.Decode(&s)
 	if err != nil {
-		return err
+		return fmt.Errorf("decode DNS record: %w", err)
 	}
 
 	err = populateDNSRecordValue(&s)
 	if err != nil {
-		return err
+		return fmt.Errorf("record %s (%s): %w", s.Name, s.Type, err)
 	}
 	err = populateDNSRecordIPFilterForYAML(&s)
 	if err != nil {
-		return err
+		return fmt.Errorf("record %s (%s): %w", s.Name, s.Type, err)
 	}
 	err = populateDNSRecordGeoproximityForYAML(&s)
 	if err != nil {
-		return err
+		return fmt.Errorf("record %s (%s): %w", s.Name, s.Type, err)
 	}
 	ex.DNSRecord = s
 
@@ -136,7 +137,7 @@ func (ex *ExpectedDNSRecord) UnmarshalYAML(value *yaml.Node) error {
 	dm := make(map[string]interface{})
 	err = value.Decode(&dm)
 	if err != nil {
-		return err
+		return fmt.Errorf("decode DNS record fields: %w", err)
 	}
 
 	definedFields := make([]string, len(dm))
@@ -151,7 +152,7 @@ func (ex *ExpectedDNSRecord) UnmarshalYAML(value *yaml.Node) error {
 
 // GetDefinedStructFieldNames returns list of defined struct fields from local configuration
 func (ex *ExpectedDNSRecord) GetDefinedStructFieldNames() []string {
-	return maps.Values(ex.definedFieldsMap)
+	return slices.Collect(maps.Values(ex.definedFieldsMap))
 }
 
 // GetImmutableStructFields returns list of immutable struct fields
@@ -179,7 +180,7 @@ func (ex *ExpectedDNSRecord) GetResourceID() string {
 func (ex *ExpectedDNSRecord) SyncResourceUpdate(constellixID int) error {
 	logger.Printf("  updating resource %q\n", ex.GetResourceID())
 	if ex.domainIDInConstellix == 0 {
-		return fmt.Errorf("unable to create DNS record: domain ID is not defined (internal error)")
+		return fmt.Errorf("unable to update DNS record: domain ID is not defined (internal error)")
 	}
 	endpoint, err := url.JoinPath(
 		dnsRESTAPIBaseURL,
@@ -189,9 +190,9 @@ func (ex *ExpectedDNSRecord) SyncResourceUpdate(constellixID int) error {
 		fmt.Sprintf("%d", constellixID),
 	)
 	if err != nil {
-		return err
+		return fmt.Errorf("build DNS record update endpoint: %w", err)
 	}
-	payload, err := generatePayload(ex, maps.Keys(ex.definedFieldsMap), nil)
+	payload, err := generatePayload(ex, slices.Collect(maps.Keys(ex.definedFieldsMap)), nil)
 	if err != nil {
 		return err
 	}
@@ -202,8 +203,8 @@ func (ex *ExpectedDNSRecord) SyncResourceUpdate(constellixID int) error {
 		for _, item := range data {
 			details += string(item)
 		}
-		logger.Println("  unexpected response. Details: " + details)
-		return fmt.Errorf("unable to update DNS record: %s", err)
+		L.Warn("unexpected response", slog.String("details", details))
+		return fmt.Errorf("unable to update DNS record: %w", err)
 	}
 	return nil
 }
@@ -215,9 +216,9 @@ func (ex *ExpectedDNSRecord) SyncResourceCreate() error {
 	}
 	endpoint, err := url.JoinPath(dnsRESTAPIBaseURL, "domains", fmt.Sprintf("%d", ex.domainIDInConstellix), "records")
 	if err != nil {
-		return err
+		return fmt.Errorf("build DNS record create endpoint: %w", err)
 	}
-	payload, err := generatePayload(ex, maps.Keys(ex.definedFieldsMap), nil)
+	payload, err := generatePayload(ex, slices.Collect(maps.Keys(ex.definedFieldsMap)), nil)
 	if err != nil {
 		return err
 	}
@@ -228,25 +229,23 @@ func (ex *ExpectedDNSRecord) SyncResourceCreate() error {
 		for _, item := range data {
 			details += string(item)
 		}
-		logger.Println("  unexpected response. Details: " + details)
-		return fmt.Errorf("unable to create DNS record: %s", err)
+		L.Warn("unexpected response", slog.String("details", details))
+		return fmt.Errorf("unable to create DNS record: %w", err)
 	}
 	return nil
 }
 
 // GetDNSRecords retrieves domain's DNS records
 func GetDNSRecords(id int) ([]*DNSRecord, error) {
-	if logLevel > 0 {
-		logger.Printf("Retrieving DNS records for domain %d...\n", id)
-	}
+	L.Debug("retrieving DNS records", slog.Int("domain_id", id))
 	endpoint, err := url.JoinPath(dnsRESTAPIBaseURL, "domains", fmt.Sprintf("%d", id), "records")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("build DNS records endpoint: %w", err)
 	}
 
 	data, err := makev4APIRequest("GET", endpoint, nil, 200)
 	if err != nil {
-		return nil, fmt.Errorf("unable to retrieve DNS domains list: %s", err)
+		return nil, fmt.Errorf("unable to retrieve DNS records: %w", err)
 	}
 
 	var records []*DNSRecord
@@ -254,7 +253,7 @@ func GetDNSRecords(id int) ([]*DNSRecord, error) {
 		var tmpRecords []*DNSRecord
 		err = json.Unmarshal(item, &tmpRecords)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("parse DNS records response: %w", err)
 		}
 		if len(tmpRecords) > 0 {
 			records = append(records, tmpRecords...)

@@ -3,12 +3,13 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 
 	"github.com/jedib0t/go-pretty/v6/table"
-	"golang.org/x/exp/slices"
 )
 
 func Sync(expectedCollection, activeCollection []ResourceMatcher, doit, remove bool, title string) error {
@@ -32,14 +33,10 @@ func Sync(expectedCollection, activeCollection []ResourceMatcher, doit, remove b
 	// Check if anything needs to be deleted first
 	for _, a := range activeCollection {
 		activeResource := a.(IActiveResource)
-		if logLevel > 0 {
-			fmt.Printf("Inspecting %q...\n", activeResource.GetResourceID())
-		}
+		L.Debug("inspecting resource", slog.String("resource", activeResource.GetResourceID()))
 		matched := getMatchingResource(activeResource, expectedCollection)
 		if matched == nil {
-			if logLevel > 0 {
-				fmt.Printf("  status: %s\n", ActionDelete)
-			}
+			L.Debug("resource status", slog.String("status", string(ActionDelete)))
 			report.AppendRow(table.Row{
 				colorAction(ActionDelete),
 				activeResource.GetResourceID(),
@@ -53,9 +50,7 @@ func Sync(expectedCollection, activeCollection []ResourceMatcher, doit, remove b
 	// Check if anything needs to be created / updated
 	for _, r := range expectedCollection {
 		expectedResource := r.(IExpectedResource)
-		if logLevel > 0 {
-			logger.Printf("Inspecting %q...\n", expectedResource.GetResourceID())
-		}
+		L.Debug("inspecting resource", slog.String("resource", expectedResource.GetResourceID()))
 
 		matchedResource := getMatchingResource(expectedResource, activeCollection)
 		var activeResource IActiveResource
@@ -65,11 +60,9 @@ func Sync(expectedCollection, activeCollection []ResourceMatcher, doit, remove b
 
 		action, diffs, err := Compare(expectedResource, activeResource)
 		if err != nil {
-			return err
+			return fmt.Errorf("resource %q: %w", expectedResource.GetResourceID(), err)
 		}
-		if logLevel > 0 {
-			logger.Printf("  status: %s\n", action)
-		}
+		L.Debug("resource status", slog.String("status", string(action)))
 		if len(diffs) == 0 {
 			report.AppendRow(table.Row{
 				colorAction(action), expectedResource.GetResourceID(), "",
@@ -94,9 +87,6 @@ func Sync(expectedCollection, activeCollection []ResourceMatcher, doit, remove b
 			toUpdate[expectedResource] = activeResource.GetConstellixID()
 		case ActionCreate:
 			toCreate = append(toCreate, expectedResource)
-		case ActionError:
-			report.Render()
-			os.Exit(1)
 		default:
 			return fmt.Errorf("unhandled action %q", action)
 		}
@@ -152,7 +142,7 @@ func syncChanges(toDelete []IActiveResource, toUpdate map[IExpectedResource]int,
 	for _, resource := range toDelete {
 		err := resource.SyncResourceDelete(resource.GetConstellixID())
 		if err != nil {
-			return err
+			return fmt.Errorf("resource %q: %w", resource.GetResourceID(), err)
 		}
 	}
 
@@ -160,7 +150,7 @@ func syncChanges(toDelete []IActiveResource, toUpdate map[IExpectedResource]int,
 	for resource, constellixID := range toUpdate {
 		err := resource.SyncResourceUpdate(constellixID)
 		if err != nil {
-			return err
+			return fmt.Errorf("resource %q: %w", resource.GetResourceID(), err)
 		}
 	}
 
@@ -168,7 +158,7 @@ func syncChanges(toDelete []IActiveResource, toUpdate map[IExpectedResource]int,
 	for _, resource := range toCreate {
 		err := resource.SyncResourceCreate()
 		if err != nil {
-			return err
+			return fmt.Errorf("resource %q: %w", resource.GetResourceID(), err)
 		}
 	}
 	return nil
@@ -182,12 +172,14 @@ func syncChanges(toDelete []IActiveResource, toUpdate map[IExpectedResource]int,
 func generatePayload(obj interface{}, definedFieldsJSON []string, excludedFieldsJSON []string) ([]byte, error) {
 	objBytes, err := json.Marshal(obj)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("marshal payload source: %w", err)
 	}
 
 	// Convert obj to map to simplify iteration
 	dataIn := map[string]interface{}{}
-	json.Unmarshal(objBytes, &dataIn)
+	if err := json.Unmarshal(objBytes, &dataIn); err != nil {
+		return nil, fmt.Errorf("unmarshal payload source: %w", err)
+	}
 
 	dataOut := map[string]interface{}{}
 
@@ -200,7 +192,7 @@ func generatePayload(obj interface{}, definedFieldsJSON []string, excludedFields
 
 	dataOutBytes, err := json.Marshal(dataOut)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("marshal payload: %w", err)
 	}
 	return dataOutBytes, nil
 }
