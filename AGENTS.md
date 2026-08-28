@@ -38,7 +38,7 @@ cmd/
   geoproximities.go                     GeoProximity/ExpectedGeoProximity models + GetGeoProximities (mockable var)
   sonar_http_check.go                   SonarHTTPCheck/ExpectedSonarHTTPCheck models + cached GetSonarHTTPChecks(), GetSonarHTTPCheckStatus()
   sonar_tcp_check.go                    SonarTCPCheck/ExpectedSonarTCPCheck models + GetSonarTCPChecks()
-  cache.go                              Package-level Sonar HTTP check cache
+  cache.go                              Package-level Sonar HTTP check and GeoProximity caches
 ```
 
 ---

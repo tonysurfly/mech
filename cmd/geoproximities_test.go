@@ -196,6 +196,9 @@ latitude: 4.56
 }
 
 func TestGetGeoProximities(t *testing.T) {
+	cachedGeoProximities = nil
+	defer func() { cachedGeoProximities = nil }()
+
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{
@@ -223,5 +226,23 @@ func TestGetGeoProximities(t *testing.T) {
 	}
 	if geops[0].Name != "test" {
 		t.Errorf("expected name %q, got %q", "test", geops[0].Name)
+	}
+}
+
+func TestGetGeoProximities_cached(t *testing.T) {
+	cachedGeoProximities = []*GeoProximity{{ID: 1, Name: "cached"}}
+	defer func() { cachedGeoProximities = nil }()
+
+	// No server configured; a cache miss would fail to connect.
+	originalDNSRESTAPIBaseURL := dnsRESTAPIBaseURL
+	defer func() { dnsRESTAPIBaseURL = originalDNSRESTAPIBaseURL }()
+	dnsRESTAPIBaseURL = "http://127.0.0.1:0"
+
+	geops, err := GetGeoProximities()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(geops) != 1 || geops[0].Name != "cached" {
+		t.Fatalf("expected cached result, got %v", geops)
 	}
 }

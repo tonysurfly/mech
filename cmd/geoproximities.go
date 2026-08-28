@@ -176,6 +176,10 @@ func (ex *ExpectedGeoProximity) SyncResourceCreate() error {
 // GetGeoProximities returns active geo proximities
 var GetGeoProximities = func() ([]*GeoProximity, error) {
 	L.Debug("retrieving GeoProximities")
+	if len(cachedGeoProximities) > 0 {
+		L.Debug("using cached GeoProximities")
+		return cachedGeoProximities, nil
+	}
 	endpoint, err := url.JoinPath(dnsRESTAPIBaseURL, "geoproximities")
 	if err != nil {
 		return nil, fmt.Errorf("build GeoProximities endpoint: %w", err)
@@ -196,5 +200,7 @@ var GetGeoProximities = func() ([]*GeoProximity, error) {
 			geops = append(geops, tmpGP...)
 		}
 	}
+
+	cachedGeoProximities = geops
 	return geops, nil
 }
