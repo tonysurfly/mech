@@ -219,7 +219,7 @@ func (ex *ExpectedSonarHTTPCheck) SyncResourceCreate() error {
 // files (@sonar,http:... syntax)
 func GetSonarHTTPChecks() ([]*SonarHTTPCheck, error) {
 	L.Debug("retrieving Sonar HTTP checks")
-	if len(cachedSonarHTTPChecks) > 0 {
+	if cachedSonarHTTPChecks != nil {
 		L.Debug("using cached Sonar HTTP checks")
 		return cachedSonarHTTPChecks, nil
 	}

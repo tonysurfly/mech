@@ -247,3 +247,33 @@ ipVersion: IPV4
 		return
 	}
 }
+
+func TestGetSonarHTTPChecks_cachedEmpty(t *testing.T) {
+	cachedSonarHTTPChecks = nil
+	defer func() { cachedSonarHTTPChecks = nil }()
+
+	requests := 0
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	defer ts.Close()
+
+	originalSonarRESTAPIBaseURL := sonarRESTAPIBaseURL
+	defer func() { sonarRESTAPIBaseURL = originalSonarRESTAPIBaseURL }()
+	sonarRESTAPIBaseURL = ts.URL
+
+	for i := range 2 {
+		checks, err := GetSonarHTTPChecks()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(checks) != 0 {
+			t.Fatalf("call %d: expected 0 checks, got %d", i, len(checks))
+		}
+	}
+	if requests != 1 {
+		t.Fatalf("expected 1 request, got %d", requests)
+	}
+}
