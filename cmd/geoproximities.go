@@ -176,7 +176,7 @@ func (ex *ExpectedGeoProximity) SyncResourceCreate() error {
 // GetGeoProximities returns active geo proximities
 var GetGeoProximities = func() ([]*GeoProximity, error) {
 	L.Debug("retrieving GeoProximities")
-	if len(cachedGeoProximities) > 0 {
+	if cachedGeoProximities != nil {
 		L.Debug("using cached GeoProximities")
 		return cachedGeoProximities, nil
 	}

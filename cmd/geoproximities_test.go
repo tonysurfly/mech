@@ -246,3 +246,39 @@ func TestGetGeoProximities_cached(t *testing.T) {
 		t.Fatalf("expected cached result, got %v", geops)
 	}
 }
+
+func TestGetGeoProximities_cachedEmpty(t *testing.T) {
+	cachedGeoProximities = nil
+	defer func() { cachedGeoProximities = nil }()
+
+	requests := 0
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{
+			"data": [],
+			"meta": {
+				"pagination": {"total": 0, "count": 0, "perPage": 10, "currentPage": 1, "totalPages": 1},
+				"links": {"next": ""}
+			}
+		}`))
+	}))
+	defer ts.Close()
+
+	originalDNSRESTAPIBaseURL := dnsRESTAPIBaseURL
+	defer func() { dnsRESTAPIBaseURL = originalDNSRESTAPIBaseURL }()
+	dnsRESTAPIBaseURL = ts.URL
+
+	for i := range 2 {
+		geops, err := GetGeoProximities()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(geops) != 0 {
+			t.Fatalf("call %d: expected 0 geoproximities, got %d", i, len(geops))
+		}
+	}
+	if requests != 1 {
+		t.Fatalf("expected 1 request, got %d", requests)
+	}
+}
